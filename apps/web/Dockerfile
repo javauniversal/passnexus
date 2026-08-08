@@ -16,6 +16,7 @@ ARG VITE_API_URL
 RUN test -n "$VITE_API_URL"
 RUN npm install --no-save --ignore-scripts \
 	@rolldown/binding-linux-x64-gnu@1.2.3 \
+	@tailwindcss/oxide-linux-x64-gnu@4.3.3 \
 	lightningcss-linux-x64-gnu@1.33.0
 RUN npm install --prefix apps/web/node_modules/@tailwindcss/node --no-save --ignore-scripts \
 	lightningcss-linux-x64-gnu@1.32.0
