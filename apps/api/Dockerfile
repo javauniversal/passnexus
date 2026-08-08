@@ -27,9 +27,10 @@ COPY --from=build /app/package.json /app/package-lock.json ./
 COPY --from=build /app/apps/api/package.json apps/api/package.json
 COPY --from=build /app/apps/web/package.json apps/web/package.json
 COPY --from=build /app/node_modules node_modules
+COPY --from=build /app/apps/api/node_modules apps/api/node_modules
 COPY --from=build /app/apps/api/dist apps/api/dist
 COPY --from=build /app/apps/api/prisma apps/api/prisma
 
 USER node
 
-CMD ["sh", "-c", "npm --workspace api exec -- prisma migrate deploy && npm run db:seed --workspace api && npm run start:prod --workspace api"]
+CMD ["sh", "-c", "cd apps/api && ./node_modules/.bin/prisma migrate deploy && node prisma/seed.mjs && node dist/main.js"]
