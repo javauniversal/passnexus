@@ -41,6 +41,7 @@ describe('AuthMailService', () => {
         text: expect.stringContaining(
           'https://passnexus.fiiss.com/#reset?token=token%2Bwith%2Fsymbols',
         ),
+        html: expect.stringContaining('Crea una contraseña nueva.'),
         tags: [{ name: 'category', value: 'password-reset' }],
       }),
       {

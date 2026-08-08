@@ -5,40 +5,25 @@ import {
 } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { Resend } from 'resend';
+import { AuthEmailType, renderAuthEmail } from './auth-email.templates';
 
 @Injectable()
 export class AuthMailService {
   private readonly logger = new Logger(AuthMailService.name);
 
   async sendVerificationEmail(email: string, token: string) {
-    await this.send(
-      email,
-      'Verifica tu correo de PassNexus',
-      'verify-email',
-      token,
-      'Verifica tu correo para activar tu cuenta de PassNexus.',
-      'email-verification',
-    );
+    await this.send(email, '#verify-email', token, 'email-verification');
   }
 
   async sendPasswordResetEmail(email: string, token: string) {
-    await this.send(
-      email,
-      'Restablece tu contraseña de PassNexus',
-      '#reset',
-      token,
-      'Restablece tu contraseña de PassNexus. Si no solicitaste este cambio, ignora este correo.',
-      'password-reset',
-    );
+    await this.send(email, '#reset', token, 'password-reset');
   }
 
   private async send(
     email: string,
-    subject: string,
     path: string,
     token: string,
-    message: string,
-    category: 'email-verification' | 'password-reset',
+    category: AuthEmailType,
   ) {
     const apiKey = process.env.RESEND_API_KEY;
     const from = process.env.EMAIL_FROM;
@@ -48,14 +33,16 @@ export class AuthMailService {
       );
     }
     const url = `${(process.env.WEB_ORIGIN ?? 'http://localhost:5173').replace(/\/$/, '')}/${path}?token=${encodeURIComponent(token)}`;
+    const template = renderAuthEmail(category, url);
     let response: Awaited<ReturnType<Resend['emails']['send']>>;
     try {
       response = await new Resend(apiKey).emails.send(
         {
           from,
           to: [email],
-          subject,
-          text: `${message}\n\n${url}`,
+          subject: template.subject,
+          text: template.text,
+          html: template.html,
           ...(process.env.EMAIL_REPLY_TO
             ? { replyTo: process.env.EMAIL_REPLY_TO }
             : {}),

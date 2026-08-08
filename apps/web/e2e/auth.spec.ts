@@ -83,3 +83,26 @@ test('forces a temporary password change before loading protected data', async (
   });
   expect(protectedRequests).toBe(0);
 });
+
+test('verifies an email token from the public hash route', async ({ page }) => {
+  let verificationPayload: Record<string, string> | null = null;
+  await page.route('**/api/auth/refresh', (route) =>
+    route.fulfill({ status: 401, contentType: 'application/json', body: '{}' }),
+  );
+  await page.route('**/api/auth/verify-email', async (route) => {
+    verificationPayload = route.request().postDataJSON() as Record<string, string>;
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ message: 'Correo electrónico verificado.' }),
+    });
+  });
+
+  await page.goto('/#verify-email?token=email-verification-token');
+
+  await expect(
+    page.getByRole('heading', { name: 'Correo verificado' }),
+  ).toBeVisible();
+  await expect(page.getByText('Correo electrónico verificado.')).toBeVisible();
+  expect(verificationPayload).toEqual({ token: 'email-verification-token' });
+});

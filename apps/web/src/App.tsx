@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import {
   Alert,
@@ -308,7 +308,7 @@ type PasswordChangeChallenge = {
   requiresPasswordChange: true;
   changeToken: string;
 };
-type AuthView = "login" | "forgot" | "reset";
+type AuthView = "login" | "forgot" | "reset" | "verify";
 type OrganizationMember = {
   role: "OWNER" | "ADMIN" | "MEMBER";
   joinedAt: string;
@@ -422,6 +422,7 @@ type AuditEvent = {
 let restoreRequest: Promise<AuthResponse | null> | null = null;
 
 function getAuthView(): AuthView {
+  if (window.location.hash.startsWith("#verify-email")) return "verify";
   if (window.location.hash.startsWith("#reset")) return "reset";
   if (window.location.hash === "#recuperar") return "forgot";
   return "login";
@@ -714,6 +715,7 @@ function App() {
           <div className="login-card">
             {authView === "forgot" && <ForgotPasswordForm />}
             {authView === "reset" && <ResetPasswordForm />}
+            {authView === "verify" && <VerifyEmailForm />}
             {authView === "login" && passwordChangeChallenge && (
               <TemporaryPasswordChangeForm
                 challenge={passwordChangeChallenge}
@@ -860,6 +862,84 @@ function App() {
         </section>
       </main>
     </ThemeProvider>
+  );
+}
+
+function VerifyEmailForm() {
+  const requestStarted = useRef(false);
+  const [state, setState] = useState<"loading" | "success" | "error">(
+    "loading",
+  );
+  const [message, setMessage] = useState("Verificando tu dirección...");
+
+  useEffect(() => {
+    if (requestStarted.current) return;
+    requestStarted.current = true;
+    const token = getResetToken();
+    if (!token) {
+      queueMicrotask(() => {
+        setState("error");
+        setMessage("El enlace de verificación no contiene un token válido.");
+      });
+      return;
+    }
+    void fetch(`${apiUrl}/auth/verify-email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    })
+      .then(async (response) => {
+        const responseMessage = await getApiMessage(
+          response,
+          "No fue posible verificar el correo.",
+        );
+        if (!response.ok) throw new Error(responseMessage);
+        setState("success");
+        setMessage(responseMessage);
+      })
+      .catch((verificationError: unknown) => {
+        setState("error");
+        setMessage(
+          verificationError instanceof Error
+            ? verificationError.message
+            : "No fue posible verificar el correo.",
+        );
+      });
+  }, []);
+
+  return (
+    <>
+      <div className="login-heading">
+        <span className="lock-badge" aria-hidden="true">
+          {state === "success" ? <Check size={20} /> : <ShieldCheck size={20} />}
+        </span>
+        <h2>
+          {state === "loading"
+            ? "Verificando tu correo"
+            : state === "success"
+              ? "Correo verificado"
+              : "Enlace no válido"}
+        </h2>
+        <p>Confirmamos tu dirección antes de permitir el acceso.</p>
+      </div>
+      {state === "loading" ? (
+        <LinearProgress aria-label="Verificando correo" />
+      ) : (
+        <Alert severity={state === "success" ? "success" : "error"}>
+          {message}
+        </Alert>
+      )}
+      {state !== "loading" && (
+        <Button
+          href="#"
+          variant={state === "success" ? "contained" : "outlined"}
+          fullWidth
+          sx={{ marginTop: 2, textTransform: "none" }}
+        >
+          Ir al inicio de sesión
+        </Button>
+      )}
+    </>
   );
 }
 
