@@ -893,7 +893,8 @@ function VerifyEmailForm() {
           response,
           "No fue posible verificar el correo.",
         );
-        if (!response.ok) throw new Error(responseMessage);
+        if (!response.ok)
+          throw new Error("El enlace es inválido, ya se utilizó o expiró.");
         setState("success");
         setMessage(responseMessage);
       })
