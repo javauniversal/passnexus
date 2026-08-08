@@ -6,9 +6,18 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const canonicalWebOrigin = process.env.WEB_ORIGIN ?? 'http://localhost:5173';
+  const allowedWebOrigins = [
+    canonicalWebOrigin,
+    ...(process.env.WEB_ORIGINS?.split(',') ?? []),
+  ]
+    .map((origin) => origin.trim().replace(/\/$/, ''))
+    .filter(
+      (origin, index, origins) => origin && origins.indexOf(origin) === index,
+    );
   app.use(helmet());
   app.enableCors({
-    origin: process.env.WEB_ORIGIN ?? 'http://localhost:5173',
+    origin: allowedWebOrigins,
     credentials: true,
   });
   app.useGlobalPipes(

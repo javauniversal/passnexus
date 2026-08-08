@@ -6,7 +6,7 @@ Las solicitudes de recuperación no revelan si una cuenta existe. Se genera un t
 
 Nest aplica `helmet`, CORS restringido a `WEB_ORIGIN` y una tubería global que valida, transforma, elimina y rechaza campos no permitidos. El límite global actual es 120 peticiones por 60 segundos.
 
-El contenido de los vaults y las claves de compartición se mantienen cifrados. La contraseña maestra se procesa en el cliente para desbloquear el vault y no se envía como parte de ese flujo. En producción se deben definir secretos JWT, `DATABASE_URL`, un SMTP autenticado, `WEB_ORIGIN` HTTPS y contraseñas de PostgreSQL no predeterminadas.
+El contenido de los vaults y las claves de compartición se mantienen cifrados. La contraseña maestra se procesa en el cliente para desbloquear el vault y no se envía como parte de ese flujo. En producción se deben definir secretos JWT, `DATABASE_URL`, `RESEND_API_KEY`, `WEB_ORIGIN` HTTPS y contraseñas de PostgreSQL no predeterminadas.
 
 ## Recuperación de contraseña maestra
 

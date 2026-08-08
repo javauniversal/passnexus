@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -23,6 +24,8 @@ import { LoginDto } from './dto/login.dto';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly jwtService: JwtService,
     private readonly prisma: PrismaService,
@@ -50,7 +53,14 @@ export class AuthService {
       select: { id: true, email: true, status: true },
     });
     if (user?.status === 'PENDING_VERIFICATION') {
-      await this.issueToken(user.id, user.email, 'EMAIL_VERIFICATION');
+      try {
+        await this.issueToken(user.id, user.email, 'EMAIL_VERIFICATION');
+      } catch (error) {
+        this.logger.error(
+          'No fue posible enviar el correo de verificación.',
+          error instanceof Error ? error.stack : undefined,
+        );
+      }
     }
     return {
       message:
@@ -65,7 +75,14 @@ export class AuthService {
       select: { id: true, email: true, status: true },
     });
     if (user?.status === 'ACTIVE') {
-      await this.issueToken(user.id, user.email, 'PASSWORD_RESET');
+      try {
+        await this.issueToken(user.id, user.email, 'PASSWORD_RESET');
+      } catch (error) {
+        this.logger.error(
+          'No fue posible enviar el correo de recuperación.',
+          error instanceof Error ? error.stack : undefined,
+        );
+      }
     }
     return {
       message:

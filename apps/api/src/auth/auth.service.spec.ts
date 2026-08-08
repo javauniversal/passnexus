@@ -77,6 +77,26 @@ describe('AuthService', () => {
     expect(authMailService.sendPasswordResetEmail).not.toHaveBeenCalled();
   });
 
+  it('keeps password reset responses generic when email delivery fails', async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      id: 'user-id',
+      email: 'ana@example.com',
+      status: 'ACTIVE',
+    });
+    prisma.authToken.deleteMany.mockResolvedValue({ count: 0 });
+    prisma.authToken.create.mockResolvedValue({ id: 'token-id' });
+    authMailService.sendPasswordResetEmail.mockRejectedValue(
+      new Error('Resend unavailable'),
+    );
+
+    await expect(
+      authService.requestPasswordReset('ana@example.com'),
+    ).resolves.toEqual({
+      message:
+        'Si existe una cuenta activa, se enviaron instrucciones para restablecer la contraseña.',
+    });
+  });
+
   it('issues access and persists a hashed refresh session for an active user', async () => {
     const passwordHash = await argon2.hash('correct-horse-battery-staple', {
       type: argon2.argon2id,

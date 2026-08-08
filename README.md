@@ -63,9 +63,8 @@ flowchart LR
 	W -->|Bearer token + JSON| A[NestJS 11 API]
 	W -->|Web Crypto API| C[Criptografía local]
 	A -->|Prisma ORM| P[(PostgreSQL)]
-	A -->|Nodemailer| S[SMTP]
+	A -->|HTTPS| S[Resend]
 	C -->|ciphertext + envelopes| A
-	S -. desarrollo .-> M[Mailpit]
 ```
 
 ### Componentes
@@ -75,7 +74,7 @@ flowchart LR
 | `apps/web` | React 19, TypeScript, Vite, Material UI, Lucide | Autenticación, dashboard, vault, criptografía cliente, organizaciones y administración. |
 | `apps/api` | NestJS 11, TypeScript, Prisma                   | API, autenticación, autorización, persistencia, correo, auditoría y reglas de negocio.  |
 | PostgreSQL | PostgreSQL 17 en desarrollo                     | Usuarios, sesiones, RBAC, organizaciones, metadatos, ciphertext y envelopes.            |
-| SMTP       | Nodemailer; Mailpit en desarrollo               | Enlaces de verificación y recuperación de cuenta.                                       |
+| Correo     | Resend API sobre HTTPS                          | Enlaces de verificación y recuperación de cuenta.                                       |
 
 ### Flujo de una sesión
 
@@ -231,7 +230,7 @@ PassNexus/
 │           ├── App.tsx           # Experiencia principal y módulos
 │           └── lib/crypto.ts     # Criptografía cliente
 ├── docs/                         # Documentación especializada
-├── docker-compose.yml            # PostgreSQL y Mailpit para desarrollo
+├── docker-compose.yml            # PostgreSQL para desarrollo
 ├── .env.example                  # Variables de servicios locales
 ├── package.json                  # Scripts y workspaces npm
 └── README.md
@@ -272,15 +271,13 @@ npm run dev:web
 
 Servicios locales:
 
-| Servicio         | URL o puerto                       |
-| ---------------- | ---------------------------------- |
-| Web              | `http://localhost:5173`            |
-| API              | `http://localhost:3000/api`        |
-| Swagger          | `http://localhost:3000/docs`       |
-| Health           | `http://localhost:3000/api/health` |
-| PostgreSQL       | `localhost:5432`                   |
-| SMTP Mailpit     | `localhost:1025`                   |
-| Interfaz Mailpit | `http://localhost:8025`            |
+| Servicio   | URL o puerto                       |
+| ---------- | ---------------------------------- |
+| Web        | `http://localhost:5173`            |
+| API        | `http://localhost:3000/api`        |
+| Swagger    | `http://localhost:3000/docs`       |
+| Health     | `http://localhost:3000/api/health` |
+| PostgreSQL | `localhost:5432`                   |
 
 Detén los servicios de Docker con `docker compose down`. Añade `-v` sólo cuando quieras eliminar también los datos locales de PostgreSQL.
 
@@ -290,25 +287,23 @@ La API busca `.env` en `apps/api/.env` y después en el `.env` de la raíz. Vite
 
 ### API y aplicación
 
-| Variable                   | Requerida        | Desarrollo/default                     | Descripción                                                                     |
-| -------------------------- | ---------------- | -------------------------------------- | ------------------------------------------------------------------------------- |
-| `DATABASE_URL`             | Sí               | Sin default                            | URL PostgreSQL usada por Prisma.                                                |
-| `JWT_ACCESS_SECRET`        | Producción       | Default local inseguro                 | Firma access tokens de 15 minutos.                                              |
-| `JWT_REFRESH_SECRET`       | Producción       | Default local inseguro                 | Firma refresh tokens de 30 días.                                                |
-| `TOTP_ENCRYPTION_KEY`      | Para MFA         | Sin default                            | Base64 de exactamente 32 bytes para cifrar secretos TOTP.                       |
-| `WEB_ORIGIN`               | Producción       | `http://localhost:5173`                | Origen CORS y base de enlaces enviados por correo.                              |
-| `API_PORT`                 | No               | `3000`                                 | Puerto HTTP de NestJS.                                                          |
-| `NODE_ENV`                 | Producción       | Sin default                            | Con `production`, la cookie refresh usa `Secure`.                               |
-| `SMTP_HOST`                | No               | `localhost`                            | Servidor SMTP.                                                                  |
-| `SMTP_PORT`                | No               | `1025`                                 | Puerto SMTP.                                                                    |
-| `SMTP_SECURE`              | No               | `false`                                | Usa conexión SMTP segura cuando vale `true`.                                    |
-| `SMTP_USER`                | Según proveedor  | Vacío                                  | Usuario SMTP; sólo se configura auth si existe junto a password.                |
-| `SMTP_PASSWORD`            | Según proveedor  | Vacío                                  | Contraseña SMTP.                                                                |
-| `SMTP_FROM`                | No               | `PassNexus <no-reply@passnexus.local>` | Remitente de correos.                                                           |
-| `VITE_API_URL`             | Según despliegue | `http://127.0.0.1:3000/api`            | URL base compilada en la SPA.                                                   |
-| `BOOTSTRAP_ADMIN_EMAIL`    | Base nueva       | Sin default                            | Correo del primer administrador; sólo se usa con password de bootstrap.         |
-| `BOOTSTRAP_ADMIN_NAME`     | Base nueva       | Sin default                            | Nombre visible del primer administrador.                                        |
-| `BOOTSTRAP_ADMIN_PASSWORD` | Una sola vez     | Sin default                            | Contraseña temporal de 12 a 128 caracteres; eliminar después del primer acceso. |
+| Variable                   | Requerida        | Desarrollo/default          | Descripción                                                                     |
+| -------------------------- | ---------------- | --------------------------- | ------------------------------------------------------------------------------- |
+| `DATABASE_URL`             | Sí               | Sin default                 | URL PostgreSQL usada por Prisma.                                                |
+| `JWT_ACCESS_SECRET`        | Producción       | Default local inseguro      | Firma access tokens de 15 minutos.                                              |
+| `JWT_REFRESH_SECRET`       | Producción       | Default local inseguro      | Firma refresh tokens de 30 días.                                                |
+| `TOTP_ENCRYPTION_KEY`      | Para MFA         | Sin default                 | Base64 de exactamente 32 bytes para cifrar secretos TOTP.                       |
+| `WEB_ORIGIN`               | Producción       | `http://localhost:5173`     | Origen canónico y base de enlaces enviados por correo.                          |
+| `WEB_ORIGINS`              | No               | Vacío                       | Orígenes CORS adicionales separados por comas durante migraciones de dominio.   |
+| `API_PORT`                 | No               | `3000`                      | Puerto HTTP de NestJS.                                                          |
+| `NODE_ENV`                 | Producción       | Sin default                 | Con `production`, la cookie refresh usa `Secure`.                               |
+| `RESEND_API_KEY`           | Para correo      | Sin default                 | API key Resend restringida al dominio de envío.                                 |
+| `EMAIL_FROM`               | Para correo      | Sin default                 | Remitente en el dominio verificado de Resend.                                   |
+| `EMAIL_REPLY_TO`           | No               | Vacío                       | Dirección que recibe respuestas de usuarios.                                    |
+| `VITE_API_URL`             | Según despliegue | `http://127.0.0.1:3000/api` | URL base compilada en la SPA.                                                   |
+| `BOOTSTRAP_ADMIN_EMAIL`    | Base nueva       | Sin default                 | Correo del primer administrador; sólo se usa con password de bootstrap.         |
+| `BOOTSTRAP_ADMIN_NAME`     | Base nueva       | Sin default                 | Nombre visible del primer administrador.                                        |
+| `BOOTSTRAP_ADMIN_PASSWORD` | Una sola vez     | Sin default                 | Contraseña temporal de 12 a 128 caracteres; eliminar después del primer acceso. |
 
 ### Servicios Docker locales
 
@@ -318,7 +313,6 @@ La API busca `.env` en `apps/api/.env` y después en el `.env` de la raíz. Vite
 | `POSTGRES_USER`     | `passnexus`                  |
 | `POSTGRES_PASSWORD` | `change-this-local-password` |
 | `POSTGRES_PORT`     | `5432`                       |
-| `MAILPIT_PORT`      | `8025`                       |
 
 `WEB_PORT` aparece en `.env.example`, pero Vite no lo consume automáticamente. Para cambiarlo usa `npm run dev:web -- --port 5175`.
 
@@ -329,18 +323,15 @@ POSTGRES_DB=passnexus
 POSTGRES_USER=passnexus
 POSTGRES_PASSWORD=change-this-local-password
 POSTGRES_PORT=5432
-MAILPIT_PORT=8025
-
 DATABASE_URL=postgresql://passnexus:change-this-local-password@localhost:5432/passnexus?schema=public
 API_PORT=3000
 WEB_ORIGIN=http://localhost:5173
 JWT_ACCESS_SECRET=replace-with-a-long-local-access-secret
 JWT_REFRESH_SECRET=replace-with-a-different-long-local-refresh-secret
 TOTP_ENCRYPTION_KEY=replace-with-base64-32-byte-key
-SMTP_HOST=localhost
-SMTP_PORT=1025
-SMTP_SECURE=false
-SMTP_FROM=PassNexus <no-reply@passnexus.local>
+RESEND_API_KEY=replace-with-a-restricted-resend-api-key
+EMAIL_FROM=PassNexus <no-reply@mail.passnexus.fiiss.com>
+EMAIL_REPLY_TO=support@example.com
 ```
 
 Genera secretos antes de usarlos:
@@ -432,7 +423,7 @@ La API usa el prefijo `/api`. Swagger se publica fuera de ese prefijo en `/docs`
 
 | Grupo          | Base                   | Operaciones principales                                                  |
 | -------------- | ---------------------- | ------------------------------------------------------------------------ |
-| Sistema        | `/api/health`          | Estado básico del proceso. No comprueba PostgreSQL ni SMTP.              |
+| Sistema        | `/api/health`          | Estado básico del proceso. No comprueba PostgreSQL ni Resend.            |
 | Autenticación  | `/api/auth`            | Verificación, recuperación, login, MFA, refresh, logout y sesión actual. |
 | Navegación     | `/api/navigation/menu` | Menú filtrado para el usuario autenticado.                               |
 | Vault          | `/api/vaults`          | Vaults, items, historial, papelera, claves y comparticiones.             |
@@ -496,7 +487,7 @@ Cuando uses dominios separados, valida el comportamiento de la cookie refresh co
 - [ ] Generar secretos distintos para JWT access, JWT refresh y TOTP.
 - [ ] Custodiar secretos en un secret manager; no en archivos de imagen o repositorio.
 - [ ] Definir `WEB_ORIGIN` y `VITE_API_URL` con HTTPS.
-- [ ] Configurar SMTP autenticado y probar entrega, rebotes y remitente.
+- [ ] Configurar Resend, verificar SPF/DKIM/DMARC y probar entrega, rebotes y remitente.
 - [ ] Ejecutar `prisma migrate deploy` antes de iniciar la nueva versión.
 - [ ] Ejecutar el seed al inicializar una base nueva.
 - [ ] Configurar temporalmente el bootstrap del primer administrador y retirar su password después del primer acceso.
@@ -506,7 +497,7 @@ Cuando uses dominios separados, valida el comportamiento de la cookie refresh co
 - [ ] Configurar backups, retención, restauración probada y monitoreo.
 - [ ] Ejecutar `npm test`, Playwright y `npm run build` antes de promover.
 
-El `docker-compose.yml` incluido es sólo para desarrollo: expone PostgreSQL, usa una contraseña predeterminada y ejecuta Mailpit. Producción usa los Dockerfiles de cada aplicación y el despliegue GitHub de Railway. No se incluyen infraestructura como código, pipeline de validación previo al push, métricas ni APM.
+El `docker-compose.yml` incluido es sólo para desarrollo: expone PostgreSQL y usa una contraseña predeterminada. Producción usa los Dockerfiles de cada aplicación, Resend por HTTPS y el despliegue GitHub de Railway. No se incluyen infraestructura como código, pipeline de validación previo al push, métricas ni APM.
 
 Consulta [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) para notas adicionales, tomando las variables de este README como referencia actual.
 
@@ -519,7 +510,7 @@ Respaldar al menos:
 - PostgreSQL con una política de retención y restauraciones periódicas probadas.
 - `TOTP_ENCRYPTION_KEY`; perderla impide validar los factores MFA existentes.
 - Configuración y secretos JWT según la política de rotación.
-- Configuración SMTP, DNS y dominios públicos.
+- Configuración Resend, DNS y dominios públicos.
 
 Un backup de PostgreSQL conserva ciphertext y envelopes, pero no sustituye las claves de recuperación que cada usuario debe custodiar. La exportación JSON actual contiene ciphertext y nonce, depende del contexto de claves del vault y no reemplaza un backup completo de PostgreSQL, especialmente para elementos promovidos a clave de documento. Prueba la recuperación completa en un entorno aislado.
 
@@ -535,7 +526,7 @@ Un backup de PostgreSQL conserva ciphertext y envelopes, pero no sustituye las c
 - NestJS escribe logs en stdout/stderr.
 - `AuditEvent` conserva eventos funcionales y administrativos, pero no reemplaza logs de infraestructura.
 - No hay métricas, tracing distribuido ni integración APM incluidos actualmente.
-- El health check actual confirma que el proceso responde, no la disponibilidad de base de datos o SMTP.
+- El health check actual confirma que el proceso responde, no la disponibilidad de base de datos o Resend.
 
 ## Limitaciones actuales
 
