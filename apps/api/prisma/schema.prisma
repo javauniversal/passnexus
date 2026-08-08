@@ -1,0 +1,351 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  SUSPENDED
+}
+
+enum AuthTokenPurpose {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+  PASSWORD_CHANGE
+}
+
+enum MenuItemType {
+  PAGE
+  GROUP
+  EXTERNAL_LINK
+}
+
+enum VaultItemType {
+  LOGIN
+  SECURE_NOTE
+  CARD
+  IDENTITY
+}
+
+enum VaultItemEncryptionScheme {
+  VAULT_KEY
+  DOCUMENT_KEY
+}
+
+enum VaultItemShareSource {
+  DIRECT
+  TEAM
+}
+
+enum OrganizationRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+model User {
+  id                 String         @id @default(uuid()) @db.Uuid
+  email              String         @unique
+  passwordHash       String
+  displayName        String
+  status             UserStatus     @default(PENDING_VERIFICATION)
+  mustChangePassword Boolean        @default(false)
+  emailVerifiedAt    DateTime?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  roles              UserRole[]
+  sessions           Session[]
+  authTokens         AuthToken[]
+  totpFactor         TotpFactor?
+  mfaLoginChallenges MfaLoginChallenge[]
+  vaults             Vault[]
+  ownedOrganizations Organization[]       @relation("OrganizationOwner")
+  organizationMemberships OrganizationMember[]
+  teamMemberships    TeamMember[]
+  cryptoKey          UserCryptoKey?
+  receivedItemShares VaultItemShare[]
+  auditEvents        AuditEvent[]
+}
+
+model AuthToken {
+  id        String           @id @default(uuid()) @db.Uuid
+  userId    String           @db.Uuid
+  tokenHash String           @unique
+  purpose   AuthTokenPurpose
+  expiresAt DateTime
+  consumedAt DateTime?
+  createdAt DateTime         @default(now())
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose, expiresAt])
+}
+
+model TotpFactor {
+  userId           String   @id @db.Uuid
+  secretCiphertext String
+  secretNonce      String
+  enabledAt        DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model MfaLoginChallenge {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  tokenHash String   @unique
+  expiresAt DateTime
+  consumedAt DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model UserCryptoKey {
+  userId              String   @id @db.Uuid
+  publicKey           Json
+  encryptedPrivateKey String
+  privateKeyNonce     String
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Organization {
+  id          String               @id @default(uuid()) @db.Uuid
+  name        String
+  ownerId     String               @db.Uuid
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  owner       User                 @relation("OrganizationOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members     OrganizationMember[]
+  teams       Team[]
+
+  @@index([ownerId])
+}
+
+model OrganizationMember {
+  organizationId String           @db.Uuid
+  userId         String           @db.Uuid
+  role           OrganizationRole @default(MEMBER)
+  joinedAt       DateTime         @default(now())
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamMemberships TeamMember[]
+
+  @@id([organizationId, userId])
+  @@index([userId])
+}
+
+model Team {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  name           String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  members        TeamMember[]
+  itemShares     VaultItemTeamShare[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model TeamMember {
+  teamId         String             @db.Uuid
+  organizationId String             @db.Uuid
+  userId         String             @db.Uuid
+  team           Team               @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  membership     OrganizationMember @relation(fields: [organizationId, userId], references: [organizationId, userId], onDelete: Cascade)
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([teamId, userId])
+  @@index([organizationId, userId])
+}
+
+model Role {
+  id          String           @id @default(uuid()) @db.Uuid
+  code        String           @unique
+  name        String
+  description String?
+  isSystem    Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+  permissions RolePermission[]
+  users       UserRole[]
+}
+
+model Permission {
+  id          String           @id @default(uuid()) @db.Uuid
+  code        String           @unique
+  name        String
+  description String?
+  roles       RolePermission[]
+  menuItems   MenuItem[]
+}
+
+model UserRole {
+  userId    String   @db.Uuid
+  roleId    String   @db.Uuid
+  assignedAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+}
+
+model RolePermission {
+  roleId       String     @db.Uuid
+  permissionId String     @db.Uuid
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model MenuItem {
+  id           String       @id @default(uuid()) @db.Uuid
+  key          String       @unique
+  label        String
+  path         String?
+  icon         String?
+  type         MenuItemType @default(PAGE)
+  sortOrder    Int          @default(0)
+  isVisible    Boolean      @default(true)
+  parentId     String?      @db.Uuid
+  permissionId String?      @db.Uuid
+  parent       MenuItem?    @relation("MenuHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children     MenuItem[]   @relation("MenuHierarchy")
+  permission   Permission?  @relation(fields: [permissionId], references: [id], onDelete: SetNull)
+}
+
+model Session {
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @db.Uuid
+  refreshTokenHash String
+  userAgent        String?
+  ipAddress        String?
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime @default(now())
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Vault {
+  id                  String      @id @default(uuid()) @db.Uuid
+  ownerId             String      @db.Uuid
+  name                String
+  encryptedVaultKey   String
+  vaultKeyNonce       String
+  keyDerivationSalt   String
+  keyDerivationParams Json
+  encryptedRecoveryVaultKey String?
+  recoveryVaultKeyNonce     String?
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+  owner               User        @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  items               VaultItem[]
+
+  @@index([ownerId])
+}
+
+model VaultItem {
+  id                      String                    @id @default(uuid()) @db.Uuid
+  vaultId                 String                    @db.Uuid
+  type                    VaultItemType
+  encryptedData           String
+  nonce                   String
+  version                 Int                       @default(1)
+  encryptionScheme        VaultItemEncryptionScheme @default(VAULT_KEY)
+  encryptedDocumentKey    String?
+  documentKeyNonce        String?
+  createdAt               DateTime                  @default(now())
+  updatedAt               DateTime                  @updatedAt
+  deletedAt               DateTime?
+  vault                   Vault                     @relation(fields: [vaultId], references: [id], onDelete: Cascade)
+  revisions               VaultItemRevision[]
+  shares                  VaultItemShare[]
+  teamShares              VaultItemTeamShare[]
+
+  @@index([vaultId])
+}
+
+model VaultItemShare {
+  id                 String               @id @default(uuid()) @db.Uuid
+  vaultItemId        String               @db.Uuid
+  recipientId        String               @db.Uuid
+  source             VaultItemShareSource @default(DIRECT)
+  sourceKey          String               @default("direct")
+  teamShareId        String?              @db.Uuid
+  encryptedItemKey   String
+  itemKeyNonce       String
+  senderPublicKey    Json
+  permission         String               @default("read")
+  expiresAt          DateTime?
+  revokedAt          DateTime?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  vaultItem          VaultItem            @relation(fields: [vaultItemId], references: [id], onDelete: Cascade)
+  recipient          User                 @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  teamShare          VaultItemTeamShare?  @relation(fields: [teamShareId], references: [id], onDelete: Cascade)
+
+  @@unique([vaultItemId, recipientId, source, sourceKey])
+  @@index([recipientId, revokedAt, expiresAt])
+  @@index([teamShareId, revokedAt])
+}
+
+model VaultItemTeamShare {
+  id             String           @id @default(uuid()) @db.Uuid
+  vaultItemId    String           @db.Uuid
+  teamId         String           @db.Uuid
+  organizationId String           @db.Uuid
+  sharedById     String           @db.Uuid
+  permission     String           @default("read")
+  expiresAt      DateTime?
+  revokedAt      DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  vaultItem      VaultItem        @relation(fields: [vaultItemId], references: [id], onDelete: Cascade)
+  team           Team             @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  shares         VaultItemShare[]
+
+  @@unique([vaultItemId, teamId])
+  @@index([teamId, revokedAt])
+  @@index([organizationId])
+}
+
+model VaultItemRevision {
+  id               String                    @id @default(uuid()) @db.Uuid
+  vaultItemId      String                    @db.Uuid
+  version          Int
+  encryptedData    String
+  nonce            String
+  encryptionScheme VaultItemEncryptionScheme @default(VAULT_KEY)
+  createdAt        DateTime                  @default(now())
+  vaultItem        VaultItem                 @relation(fields: [vaultItemId], references: [id], onDelete: Cascade)
+
+  @@unique([vaultItemId, version])
+  @@index([vaultItemId, createdAt])
+}
+
+model AuditEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String?  @db.Uuid
+  action    String
+  entity    String
+  entityId  String?
+  ipAddress String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([entity, entityId])
+}

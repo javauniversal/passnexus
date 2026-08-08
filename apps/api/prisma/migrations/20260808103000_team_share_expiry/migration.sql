@@ -1,0 +1,1 @@
+ALTER TABLE "VaultItemTeamShare" ADD COLUMN "expiresAt" TIMESTAMP(3);
