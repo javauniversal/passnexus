@@ -75,7 +75,9 @@ import {
 import type { VaultEnvelope } from "./lib/crypto";
 import "./App.css";
 
-const apiUrl = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:3000/api";
+const apiUrl = import.meta.env.PROD
+  ? "/api"
+  : (import.meta.env.VITE_API_URL ?? "http://127.0.0.1:3000/api");
 
 const passwordCharacterSets = [
   "ABCDEFGHJKLMNPQRSTUVWXYZ",

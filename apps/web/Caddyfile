@@ -7,9 +7,6 @@
 	root * /srv
 	encode zstd gzip
 
-	@health path /health
-	respond @health "ok" 200
-
 	header {
 		-Server
 		Referrer-Policy "strict-origin-when-cross-origin"
@@ -20,6 +17,20 @@
 	header @assets Cache-Control "public, max-age=31536000, immutable"
 	header /index.html Cache-Control "no-store"
 
-	try_files {path} /index.html
-	file_server
+	route {
+		handle /health {
+			respond "ok" 200
+		}
+
+		handle /api/* {
+			reverse_proxy https://api-production-bb32.up.railway.app {
+				header_up Host {upstream_hostport}
+			}
+		}
+
+		handle {
+			try_files {path} /index.html
+			file_server
+		}
+	}
 }
