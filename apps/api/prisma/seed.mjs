@@ -1,24 +1,77 @@
 import { PrismaClient } from '@prisma/client';
+import argon2 from 'argon2';
 
 const prisma = new PrismaClient();
 
 const permissions = [
   ['vault.read', 'Ver vault', 'Permite consultar vaults y secretos.'],
-  ['vault.create', 'Crear en vault', 'Permite crear vaults, secretos e importaciones.'],
-  ['vault.update', 'Editar en vault', 'Permite editar secretos, claves y comparticiones.'],
-  ['vault.delete', 'Eliminar del vault', 'Permite eliminar secretos y comparticiones.'],
-  ['organizations.read', 'Ver organizaciones', 'Permite consultar organizaciones, miembros y equipos.'],
-  ['organizations.create', 'Crear organizaciones', 'Permite crear organizaciones.'],
-  ['organizations.update', 'Editar organizaciones', 'Permite incorporar miembros y gestionar equipos.'],
-  ['organizations.delete', 'Eliminar en organizaciones', 'Permite retirar miembros y equipos.'],
-  ['users.read', 'Ver usuarios', 'Permite consultar el directorio de usuarios.'],
+  [
+    'vault.create',
+    'Crear en vault',
+    'Permite crear vaults, secretos e importaciones.',
+  ],
+  [
+    'vault.update',
+    'Editar en vault',
+    'Permite editar secretos, claves y comparticiones.',
+  ],
+  [
+    'vault.delete',
+    'Eliminar del vault',
+    'Permite eliminar secretos y comparticiones.',
+  ],
+  [
+    'organizations.read',
+    'Ver organizaciones',
+    'Permite consultar organizaciones, miembros y equipos.',
+  ],
+  [
+    'organizations.create',
+    'Crear organizaciones',
+    'Permite crear organizaciones.',
+  ],
+  [
+    'organizations.update',
+    'Editar organizaciones',
+    'Permite incorporar miembros y gestionar equipos.',
+  ],
+  [
+    'organizations.delete',
+    'Eliminar en organizaciones',
+    'Permite retirar miembros y equipos.',
+  ],
+  [
+    'users.read',
+    'Ver usuarios',
+    'Permite consultar el directorio de usuarios.',
+  ],
   ['users.create', 'Crear usuarios', 'Permite crear cuentas internas.'],
-  ['users.update', 'Editar usuarios', 'Permite editar accesos y regenerar credenciales.'],
+  [
+    'users.update',
+    'Editar usuarios',
+    'Permite editar accesos y regenerar credenciales.',
+  ],
   ['roles.read', 'Ver roles', 'Permite consultar roles y permisos.'],
-  ['roles.create', 'Crear roles', 'Permite crear roles con permisos configurables.'],
-  ['roles.update', 'Editar roles', 'Permite cambiar los permisos de los roles.'],
-  ['navigation.read', 'Ver navegación', 'Permite consultar la configuración del menú.'],
-  ['navigation.update', 'Editar navegación', 'Permite editar la configuración del menú.'],
+  [
+    'roles.create',
+    'Crear roles',
+    'Permite crear roles con permisos configurables.',
+  ],
+  [
+    'roles.update',
+    'Editar roles',
+    'Permite cambiar los permisos de los roles.',
+  ],
+  [
+    'navigation.read',
+    'Ver navegación',
+    'Permite consultar la configuración del menú.',
+  ],
+  [
+    'navigation.update',
+    'Editar navegación',
+    'Permite editar la configuración del menú.',
+  ],
   ['audit.read', 'Ver auditoría', 'Permite consultar eventos de seguridad.'],
 ];
 
@@ -30,24 +83,91 @@ async function upsertPermission([code, name, description]) {
   });
 }
 
+async function bootstrapAdministrator(administratorRole) {
+  const password = process.env.BOOTSTRAP_ADMIN_PASSWORD;
+  if (!password) return;
+
+  const email = process.env.BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase();
+  const displayName = process.env.BOOTSTRAP_ADMIN_NAME?.trim();
+  if (!email || !displayName) {
+    throw new Error(
+      'BOOTSTRAP_ADMIN_EMAIL y BOOTSTRAP_ADMIN_NAME son obligatorios cuando se configura BOOTSTRAP_ADMIN_PASSWORD.',
+    );
+  }
+  if (password.length < 12 || password.length > 128) {
+    throw new Error(
+      'BOOTSTRAP_ADMIN_PASSWORD debe tener entre 12 y 128 caracteres.',
+    );
+  }
+
+  let user = await prisma.user.findUnique({ where: { email } });
+  if (!user) {
+    user = await prisma.user.create({
+      data: {
+        email,
+        displayName,
+        passwordHash: await argon2.hash(password, { type: argon2.argon2id }),
+        status: 'ACTIVE',
+        emailVerifiedAt: new Date(),
+        mustChangePassword: true,
+      },
+    });
+  }
+
+  await prisma.userRole.upsert({
+    where: {
+      userId_roleId: { userId: user.id, roleId: administratorRole.id },
+    },
+    update: {},
+    create: { userId: user.id, roleId: administratorRole.id },
+  });
+}
+
 async function main() {
-  const permissionRecords = await Promise.all(permissions.map(upsertPermission));
-  const permissionsByCode = new Map(permissionRecords.map((permission) => [permission.code, permission]));
+  const permissionRecords = await Promise.all(
+    permissions.map(upsertPermission),
+  );
+  const permissionsByCode = new Map(
+    permissionRecords.map((permission) => [permission.code, permission]),
+  );
 
   const administratorRole = await prisma.role.upsert({
     where: { code: 'ADMINISTRATOR' },
-    update: { name: 'Administrador', description: 'Control total de PassNexus.', isSystem: true },
-    create: { code: 'ADMINISTRATOR', name: 'Administrador', description: 'Control total de PassNexus.', isSystem: true },
+    update: {
+      name: 'Administrador',
+      description: 'Control total de PassNexus.',
+      isSystem: true,
+    },
+    create: {
+      code: 'ADMINISTRATOR',
+      name: 'Administrador',
+      description: 'Control total de PassNexus.',
+      isSystem: true,
+    },
   });
   const vaultMemberRole = await prisma.role.upsert({
     where: { code: 'VAULT_MEMBER' },
-    update: { name: 'Miembro de vault', description: 'Gestiona sus propios secretos.', isSystem: true },
-    create: { code: 'VAULT_MEMBER', name: 'Miembro de vault', description: 'Gestiona sus propios secretos.', isSystem: true },
+    update: {
+      name: 'Miembro de vault',
+      description: 'Gestiona sus propios secretos.',
+      isSystem: true,
+    },
+    create: {
+      code: 'VAULT_MEMBER',
+      name: 'Miembro de vault',
+      description: 'Gestiona sus propios secretos.',
+      isSystem: true,
+    },
   });
 
   for (const permission of permissionRecords) {
     await prisma.rolePermission.upsert({
-      where: { roleId_permissionId: { roleId: administratorRole.id, permissionId: permission.id } },
+      where: {
+        roleId_permissionId: {
+          roleId: administratorRole.id,
+          permissionId: permission.id,
+        },
+      },
       update: {},
       create: { roleId: administratorRole.id, permissionId: permission.id },
     });
@@ -61,7 +181,12 @@ async function main() {
   ]) {
     const permission = permissionsByCode.get(permissionCode);
     await prisma.rolePermission.upsert({
-      where: { roleId_permissionId: { roleId: vaultMemberRole.id, permissionId: permission.id } },
+      where: {
+        roleId_permissionId: {
+          roleId: vaultMemberRole.id,
+          permissionId: permission.id,
+        },
+      },
       update: {},
       create: { roleId: vaultMemberRole.id, permissionId: permission.id },
     });
@@ -69,16 +194,81 @@ async function main() {
 
   const adminMenu = await prisma.menuItem.upsert({
     where: { key: 'administration' },
-    update: { label: 'Administración', icon: 'Settings', type: 'GROUP', sortOrder: 90, isVisible: true },
-    create: { key: 'administration', label: 'Administración', icon: 'Settings', type: 'GROUP', sortOrder: 90, isVisible: true },
+    update: {
+      label: 'Administración',
+      icon: 'Settings',
+      type: 'GROUP',
+      sortOrder: 90,
+      isVisible: true,
+    },
+    create: {
+      key: 'administration',
+      label: 'Administración',
+      icon: 'Settings',
+      type: 'GROUP',
+      sortOrder: 90,
+      isVisible: true,
+    },
   });
   const menuItems = [
-    { key: 'vault', label: 'Mi vault', path: '/vault', icon: 'KeyRound', type: 'PAGE', sortOrder: 10, permission: 'vault.read' },
-    { key: 'organizations', label: 'Organizaciones', path: '/organizations', icon: 'Building2', type: 'PAGE', sortOrder: 20, permission: 'organizations.read' },
-    { key: 'audit', label: 'Auditoría', path: '/admin/audit', icon: 'ScrollText', type: 'PAGE', sortOrder: 10, parentId: adminMenu.id, permission: 'audit.read' },
-    { key: 'users', label: 'Usuarios', path: '/admin/users', icon: 'Users', type: 'PAGE', sortOrder: 20, parentId: adminMenu.id, permission: 'users.read' },
-    { key: 'roles', label: 'Roles y permisos', path: '/admin/roles', icon: 'ShieldCheck', type: 'PAGE', sortOrder: 30, parentId: adminMenu.id, permission: 'roles.read' },
-    { key: 'navigation', label: 'Navegación', path: '/admin/navigation', icon: 'PanelLeft', type: 'PAGE', sortOrder: 40, parentId: adminMenu.id, permission: 'navigation.read' },
+    {
+      key: 'vault',
+      label: 'Mi vault',
+      path: '/vault',
+      icon: 'KeyRound',
+      type: 'PAGE',
+      sortOrder: 10,
+      permission: 'vault.read',
+    },
+    {
+      key: 'organizations',
+      label: 'Organizaciones',
+      path: '/organizations',
+      icon: 'Building2',
+      type: 'PAGE',
+      sortOrder: 20,
+      permission: 'organizations.read',
+    },
+    {
+      key: 'audit',
+      label: 'Auditoría',
+      path: '/admin/audit',
+      icon: 'ScrollText',
+      type: 'PAGE',
+      sortOrder: 10,
+      parentId: adminMenu.id,
+      permission: 'audit.read',
+    },
+    {
+      key: 'users',
+      label: 'Usuarios',
+      path: '/admin/users',
+      icon: 'Users',
+      type: 'PAGE',
+      sortOrder: 20,
+      parentId: adminMenu.id,
+      permission: 'users.read',
+    },
+    {
+      key: 'roles',
+      label: 'Roles y permisos',
+      path: '/admin/roles',
+      icon: 'ShieldCheck',
+      type: 'PAGE',
+      sortOrder: 30,
+      parentId: adminMenu.id,
+      permission: 'roles.read',
+    },
+    {
+      key: 'navigation',
+      label: 'Navegación',
+      path: '/admin/navigation',
+      icon: 'PanelLeft',
+      type: 'PAGE',
+      sortOrder: 40,
+      parentId: adminMenu.id,
+      permission: 'navigation.read',
+    },
   ];
 
   for (const menuItem of menuItems) {
@@ -90,6 +280,8 @@ async function main() {
       create: { ...menuItemData, permissionId: permission.id },
     });
   }
+
+  await bootstrapAdministrator(administratorRole);
 }
 
 main()

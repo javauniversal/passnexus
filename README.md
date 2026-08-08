@@ -290,22 +290,25 @@ La API busca `.env` en `apps/api/.env` y después en el `.env` de la raíz. Vite
 
 ### API y aplicación
 
-| Variable              | Requerida        | Desarrollo/default                     | Descripción                                                      |
-| --------------------- | ---------------- | -------------------------------------- | ---------------------------------------------------------------- |
-| `DATABASE_URL`        | Sí               | Sin default                            | URL PostgreSQL usada por Prisma.                                 |
-| `JWT_ACCESS_SECRET`   | Producción       | Default local inseguro                 | Firma access tokens de 15 minutos.                               |
-| `JWT_REFRESH_SECRET`  | Producción       | Default local inseguro                 | Firma refresh tokens de 30 días.                                 |
-| `TOTP_ENCRYPTION_KEY` | Para MFA         | Sin default                            | Base64 de exactamente 32 bytes para cifrar secretos TOTP.        |
-| `WEB_ORIGIN`          | Producción       | `http://localhost:5173`                | Origen CORS y base de enlaces enviados por correo.               |
-| `API_PORT`            | No               | `3000`                                 | Puerto HTTP de NestJS.                                           |
-| `NODE_ENV`            | Producción       | Sin default                            | Con `production`, la cookie refresh usa `Secure`.                |
-| `SMTP_HOST`           | No               | `localhost`                            | Servidor SMTP.                                                   |
-| `SMTP_PORT`           | No               | `1025`                                 | Puerto SMTP.                                                     |
-| `SMTP_SECURE`         | No               | `false`                                | Usa conexión SMTP segura cuando vale `true`.                     |
-| `SMTP_USER`           | Según proveedor  | Vacío                                  | Usuario SMTP; sólo se configura auth si existe junto a password. |
-| `SMTP_PASSWORD`       | Según proveedor  | Vacío                                  | Contraseña SMTP.                                                 |
-| `SMTP_FROM`           | No               | `PassNexus <no-reply@passnexus.local>` | Remitente de correos.                                            |
-| `VITE_API_URL`        | Según despliegue | `http://127.0.0.1:3000/api`            | URL base compilada en la SPA.                                    |
+| Variable                   | Requerida        | Desarrollo/default                     | Descripción                                                                     |
+| -------------------------- | ---------------- | -------------------------------------- | ------------------------------------------------------------------------------- |
+| `DATABASE_URL`             | Sí               | Sin default                            | URL PostgreSQL usada por Prisma.                                                |
+| `JWT_ACCESS_SECRET`        | Producción       | Default local inseguro                 | Firma access tokens de 15 minutos.                                              |
+| `JWT_REFRESH_SECRET`       | Producción       | Default local inseguro                 | Firma refresh tokens de 30 días.                                                |
+| `TOTP_ENCRYPTION_KEY`      | Para MFA         | Sin default                            | Base64 de exactamente 32 bytes para cifrar secretos TOTP.                       |
+| `WEB_ORIGIN`               | Producción       | `http://localhost:5173`                | Origen CORS y base de enlaces enviados por correo.                              |
+| `API_PORT`                 | No               | `3000`                                 | Puerto HTTP de NestJS.                                                          |
+| `NODE_ENV`                 | Producción       | Sin default                            | Con `production`, la cookie refresh usa `Secure`.                               |
+| `SMTP_HOST`                | No               | `localhost`                            | Servidor SMTP.                                                                  |
+| `SMTP_PORT`                | No               | `1025`                                 | Puerto SMTP.                                                                    |
+| `SMTP_SECURE`              | No               | `false`                                | Usa conexión SMTP segura cuando vale `true`.                                    |
+| `SMTP_USER`                | Según proveedor  | Vacío                                  | Usuario SMTP; sólo se configura auth si existe junto a password.                |
+| `SMTP_PASSWORD`            | Según proveedor  | Vacío                                  | Contraseña SMTP.                                                                |
+| `SMTP_FROM`                | No               | `PassNexus <no-reply@passnexus.local>` | Remitente de correos.                                                           |
+| `VITE_API_URL`             | Según despliegue | `http://127.0.0.1:3000/api`            | URL base compilada en la SPA.                                                   |
+| `BOOTSTRAP_ADMIN_EMAIL`    | Base nueva       | Sin default                            | Correo del primer administrador; sólo se usa con password de bootstrap.         |
+| `BOOTSTRAP_ADMIN_NAME`     | Base nueva       | Sin default                            | Nombre visible del primer administrador.                                        |
+| `BOOTSTRAP_ADMIN_PASSWORD` | Una sola vez     | Sin default                            | Contraseña temporal de 12 a 128 caracteres; eliminar después del primer acceso. |
 
 ### Servicios Docker locales
 
@@ -382,15 +385,15 @@ El seed es idempotente y crea o actualiza:
 
 ### Primer administrador
 
-El proyecto no ofrece registro público y el seed **no crea usuarios**. En una base nueva se debe provisionar el primer usuario mediante un procedimiento operativo controlado antes de exponer la aplicación. Ese procedimiento debe:
+El proyecto no ofrece registro público. Para una base nueva, configura temporalmente `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_NAME` y `BOOTSTRAP_ADMIN_PASSWORD` antes del primer arranque. El seed:
 
-1. Generar el `passwordHash` con Argon2id; nunca insertar una contraseña en claro.
-2. Crear un `User` activo y marcar/verificar su correo según la política del entorno.
-3. Asociarlo mediante `UserRole` al rol `ADMINISTRATOR` creado por el seed.
-4. Forzar cambio de contraseña o entregar un enlace de configuración por un canal seguro.
-5. Retirar o deshabilitar cualquier mecanismo temporal de bootstrap.
+1. Crea el usuario sólo si el correo todavía no existe.
+2. Genera el hash con Argon2id y nunca persiste la contraseña en claro.
+3. Asigna el rol `ADMINISTRATOR`.
+4. Marca la cuenta para cambiar obligatoriamente la contraseña al iniciar sesión.
+5. No vuelve a establecer la contraseña en reinicios posteriores.
 
-Actualmente no existe un script de bootstrap versionado. Esto es un requisito pendiente para instalaciones completamente nuevas; una restauración que ya contenga usuarios no necesita repetirlo.
+Después del primer acceso y cambio de contraseña, elimina `BOOTSTRAP_ADMIN_PASSWORD` de Railway. Sin esa variable el bootstrap queda desactivado; el correo y nombre pueden retirarse también.
 
 ## Pruebas y calidad
 
@@ -454,13 +457,16 @@ npm ci
 npm run build
 ```
 
-La API se inicia con:
+El repositorio incluye dos imágenes de producción:
 
-```sh
-NODE_ENV=production npm run start:prod --workspace api
-```
+- `apps/api/Dockerfile`: compila NestJS, aplica migraciones, ejecuta el seed idempotente e inicia la API.
+- `apps/web/Dockerfile`: compila Vite y sirve la SPA con Caddy, compresión y fallback a `index.html`.
 
-La web debe servirse desde `apps/web/dist` con un servidor estático o CDN. Configura fallback a `index.html` para la SPA y compila `VITE_API_URL` con la URL pública de la API.
+`railway.json` selecciona el builder Dockerfile y permite usar los `CMD` de cada imagen. En Railway, cada servicio define su `RAILWAY_DOCKERFILE_PATH` y el despliegue se activa automáticamente al hacer push a `main` en `javauniversal/passnexus`; no se usa `railway up` para producción.
+
+Railway inyecta `PORT`. La API lo prioriza sobre `API_PORT`, y Caddy también escucha ese puerto. `VITE_API_URL` se consume durante el build de la web, por lo que cambiarlo requiere un nuevo despliegue.
+
+La configuración actual usa una base lógica `passnexus` dentro del PostgreSQL compartido de AgroIA mediante su URL pública TLS. Las migraciones operan únicamente sobre esa base porque `DATABASE_URL` termina en `/passnexus`; no se deben ejecutar apuntando a la base `railway` ni a otras bases del servidor.
 
 ### Topologías compatibles
 
@@ -493,14 +499,14 @@ Cuando uses dominios separados, valida el comportamiento de la cookie refresh co
 - [ ] Configurar SMTP autenticado y probar entrega, rebotes y remitente.
 - [ ] Ejecutar `prisma migrate deploy` antes de iniciar la nueva versión.
 - [ ] Ejecutar el seed al inicializar una base nueva.
-- [ ] Provisionar el primer administrador en una instalación nueva.
+- [ ] Configurar temporalmente el bootstrap del primer administrador y retirar su password después del primer acceso.
 - [ ] Servir la SPA con fallback a `index.html`.
 - [ ] Restringir o desactivar Swagger público según la política del entorno.
 - [ ] Configurar health checks contra `/api/health` y una comprobación de dependencia separada.
 - [ ] Configurar backups, retención, restauración probada y monitoreo.
 - [ ] Ejecutar `npm test`, Playwright y `npm run build` antes de promover.
 
-El `docker-compose.yml` incluido es para desarrollo: expone PostgreSQL, usa una contraseña predeterminada y ejecuta Mailpit. No es una definición de producción. El repositorio tampoco incluye actualmente Dockerfiles, reverse proxy, CI/CD ni infraestructura como código.
+El `docker-compose.yml` incluido es sólo para desarrollo: expone PostgreSQL, usa una contraseña predeterminada y ejecuta Mailpit. Producción usa los Dockerfiles de cada aplicación y el despliegue GitHub de Railway. No se incluyen infraestructura como código, pipeline de validación previo al push, métricas ni APM.
 
 Consulta [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) para notas adicionales, tomando las variables de este README como referencia actual.
 
@@ -533,14 +539,13 @@ Un backup de PostgreSQL conserva ciphertext y envelopes, pero no sustituye las c
 
 ## Limitaciones actuales
 
-- No existe bootstrap automatizado del primer administrador.
 - No hay registro público; el flujo es de usuarios internos administrados.
 - La verificación de correo tiene endpoints y correo, pero no una vista dedicada equivalente al reset por hash.
 - No hay borrado de eventos de auditoría y sólo existe `audit.read`.
 - Navegación agrupa crear, editar y eliminar bajo `navigation.update`.
 - La sección activa del dashboard vive en estado React; recargar un deep link como `/admin/navigation` no restaura todavía esa sección automáticamente.
 - El frontend concentra gran parte de la experiencia en `App.tsx`; antes de crecer conviene separar dominios y rutas.
-- No se incluyen contenedores de producción, pipeline CI/CD, IaC, métricas ni APM.
+- No se incluyen IaC, pipeline de validación previo al push, métricas ni APM.
 - La postura criptográfica y de seguridad no cuenta aún con una auditoría externa documentada.
 
 ## Documentación relacionada
