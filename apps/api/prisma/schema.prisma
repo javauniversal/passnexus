@@ -31,6 +31,7 @@ enum VaultItemType {
   SECURE_NOTE
   CARD
   IDENTITY
+  WEBSITE
 }
 
 enum VaultItemEncryptionScheme {

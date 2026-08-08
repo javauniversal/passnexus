@@ -35,6 +35,7 @@ import {
   Download,
   Eye,
   EyeOff,
+  Globe2,
   KeyRound,
   Link2,
   LockKeyhole,
@@ -215,7 +216,7 @@ type Vault = VaultEnvelope & {
 };
 type VaultItem = {
   id: string;
-  type: "LOGIN" | "SECURE_NOTE" | "CARD" | "IDENTITY";
+  type: "LOGIN" | "SECURE_NOTE" | "CARD" | "IDENTITY" | "WEBSITE";
   encryptedData: string;
   nonce: string;
   version: number;
@@ -226,6 +227,16 @@ type VaultItem = {
   updatedAt: string;
 };
 type VaultItemType = VaultItem["type"];
+const vaultItemPresentation: Record<
+  VaultItemType,
+  { label: string; icon: typeof KeyRound }
+> = {
+  LOGIN: { label: "Inicio de sesión", icon: KeyRound },
+  SECURE_NOTE: { label: "Nota segura", icon: StickyNote },
+  CARD: { label: "Tarjeta", icon: CreditCard },
+  IDENTITY: { label: "Identidad", icon: Contact },
+  WEBSITE: { label: "Sitio web", icon: Globe2 },
+};
 type CustomField = { name: string; value: string; protected: boolean };
 type VaultItemValue = {
   title: string;
@@ -2260,6 +2271,8 @@ function VaultContents({
               password,
               website: website.trim() || undefined,
             }
+          : itemType === "WEBSITE"
+            ? { ...common, website: website.trim() }
           : itemType === "CARD"
             ? { ...common, cardholder, cardNumber, expiry, securityCode }
             : itemType === "IDENTITY"
@@ -2498,7 +2511,7 @@ function VaultContents({
     if (!value || typeof value !== "object") return false;
     const item = value as Record<string, unknown>;
     return (
-      ["LOGIN", "SECURE_NOTE", "CARD", "IDENTITY"].includes(
+      ["LOGIN", "SECURE_NOTE", "CARD", "IDENTITY", "WEBSITE"].includes(
         String(item.type),
       ) &&
       typeof item.encryptedData === "string" &&
@@ -3115,22 +3128,8 @@ function VaultContents({
           </header>
           <div className="shared-credential-list">
             {visibleSharedItems.map((item) => {
-              const SharedItemIcon =
-                item.type === "LOGIN"
-                  ? KeyRound
-                  : item.type === "SECURE_NOTE"
-                    ? StickyNote
-                    : item.type === "CARD"
-                      ? CreditCard
-                      : Contact;
-              const itemLabel =
-                item.type === "LOGIN"
-                  ? "Inicio de sesión"
-                  : item.type === "SECURE_NOTE"
-                    ? "Nota segura"
-                    : item.type === "CARD"
-                      ? "Tarjeta"
-                      : "Identidad";
+              const { icon: SharedItemIcon, label: itemLabel } =
+                vaultItemPresentation[item.type];
               return (
                 <article className="shared-credential-card" key={item.id}>
                   <span className="shared-credential-icon">
@@ -3199,24 +3198,10 @@ function VaultContents({
       <div className="credential-list">
         {visibleItems.map((item) => {
           const isRevealed = revealedItemIds.includes(item.id);
-          const itemLabel =
-            item.type === "LOGIN"
-              ? "Inicio de sesión"
-              : item.type === "SECURE_NOTE"
-                ? "Nota segura"
-                : item.type === "CARD"
-                  ? "Tarjeta"
-                  : "Identidad";
-          const ItemIcon =
-            item.type === "LOGIN"
-              ? KeyRound
-              : item.type === "SECURE_NOTE"
-                ? StickyNote
-                : item.type === "CARD"
-                  ? CreditCard
-                  : Contact;
+          const { icon: ItemIcon, label: itemLabel } =
+            vaultItemPresentation[item.type];
           const fields =
-            item.type === "LOGIN"
+            item.type === "LOGIN" || item.type === "WEBSITE"
               ? [
                   {
                     key: "website",
@@ -3554,6 +3539,10 @@ function VaultContents({
                 <Contact size={17} />
                 Identidad
               </ToggleButton>
+              <ToggleButton value="WEBSITE">
+                <Globe2 size={17} />
+                Sitio web
+              </ToggleButton>
             </ToggleButtonGroup>
             <TextField
               label="Nombre del elemento"
@@ -3688,6 +3677,17 @@ function VaultContents({
                   )}
                 </div>
               </>
+            )}
+            {itemType === "WEBSITE" && (
+              <TextField
+                label="Dirección del sitio web"
+                placeholder="https://ejemplo.com"
+                type="url"
+                value={website}
+                onChange={(event) => setWebsite(event.target.value)}
+                required
+                fullWidth
+              />
             )}
             {itemType === "CARD" && (
               <div className="dialog-field-grid">

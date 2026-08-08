@@ -1,0 +1,1 @@
+ALTER TYPE "VaultItemType" ADD VALUE 'WEBSITE';
